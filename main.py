@@ -4,10 +4,8 @@ import os
 import pandas as pd
 import numpy as np
 
-# Carregar variáveis de ambiente
-load_dotenv()
 
-# Credenciais do banco de dados
+load_dotenv()
 dbname = os.getenv('DB_NAME')
 user = os.getenv('DB_USER')
 password = os.getenv('DB_PASSWORD')
@@ -34,10 +32,24 @@ def inserir_dados(df):
 
         duplicados_clientes = []
 
+
+        # Querys
         insert_query_clientes = f"""
         INSERT INTO {'tbl_clientes'} (nome_razao_social, nome_fantasia, cpf_cnpj, data_nascimento, data_cadastro) 
         VALUES (%s, %s, %s, %s, %s) ON CONFLICT (cpf_cnpj) DO NOTHING RETURNING id;
         """
+
+        insert_query_planos = f"""
+        INSERT INTO {'tbl_planos'} (descricao, valor) 
+        VALUES (%s, %s) ON CONFLICT (descricao) DO NOTHING RETURNING id;
+        """
+
+        insert_query_status = f"""
+        INSERT INTO {'tbl_status_contrato'} (status) 
+        VALUES (%s) ON CONFLICT (status) DO NOTHING RETURNING id;
+        """
+
+
 
         for indice, row in df.iterrows():
             cursor.execute(insert_query_clientes, (
@@ -51,6 +63,20 @@ def inserir_dados(df):
             # Verifica se o cpf já existe na base se sim insere na lista de cliente duplicado
             if cursor.rowcount == 0:  
                 duplicados_clientes.append(row['CPF/CNPJ'])
+
+
+            # Inserir dados do plano
+            cursor.execute(insert_query_planos, (
+            row['Plano'],
+            row['Plano Valor']
+            ))
+
+            # Inserir dados do status
+            cursor.execute(insert_query_status, (
+            row['Status'],
+            ))
+            
+
 
 
         conn.commit()
