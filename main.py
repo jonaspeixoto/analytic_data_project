@@ -4,16 +4,16 @@ import os
 import pandas as pd
 import numpy as np
 
-# Carregar variáveis de ambiente
 load_dotenv()
+
 dbname = os.getenv('DB_NAME')
 user = os.getenv('DB_USER')
 password = os.getenv('DB_PASSWORD')
 host = os.getenv('DB_HOST')
 port = os.getenv('DB_PORT')
 
-
 duplicados_clientes = []
+registros_nao_importados = []
 
 def mapear_df(df):
     mapeamento_uf = {
@@ -47,9 +47,7 @@ def mapear_df(df):
     }
 
     df['UF'] = df['UF'].map(mapeamento_uf)
-
     df['Isento'] = df['Isento'].fillna(False).astype(bool)
-
     df['CEP'] = df['CEP'].fillna('')
     df['Endereço'] = df['Endereço'].fillna('')
 
@@ -66,15 +64,14 @@ def inserir_dados(df):
         )
         cursor = conn.cursor()
         print('Conexão realizada com sucesso')
+        print("inserindo dados")
 
-        # Tratando dados de CPF/CNPJ
         df = df.replace({np.nan: None, pd.NaT: None})
         df['CPF/CNPJ'] = df['CPF/CNPJ'].astype(str)
         df['CPF/CNPJ'] = df['CPF/CNPJ'].str.replace(r'\D', '', regex=True)
 
-        
 
-        # Queries
+        # Querys
         insert_query_clientes = """
         INSERT INTO tbl_clientes (nome_razao_social, nome_fantasia, cpf_cnpj, data_nascimento, data_cadastro) 
         VALUES (%s, %s, %s, %s, %s) ON CONFLICT (cpf_cnpj) DO NOTHING RETURNING id;
@@ -100,99 +97,98 @@ def inserir_dados(df):
         VALUES (%s, %s, %s);
         """
 
+        total_registros_importados = 0
+
         for indice, row in df.iterrows():
-            # Inserir dados do cliente
-            cursor.execute(insert_query_clientes, (
-                row['Nome/Razão Social'],
-                row['Nome Fantasia'],
-                row['CPF/CNPJ'],
-                row['Data Nasc.'],
-                row['Data Cadastro cliente']
-            ))
+            try:
+                cursor.execute(insert_query_clientes, (
+                    row['Nome/Razão Social'],
+                    row['Nome Fantasia'],
+                    row['CPF/CNPJ'],
+                    row['Data Nasc.'],
+                    row['Data Cadastro cliente']
+                ))
 
-            if cursor.rowcount > 0:  
-                cliente_id = cursor.fetchone()[0]  
-            else:  
-                cursor.execute("SELECT id FROM tbl_clientes WHERE cpf_cnpj = %s;", (row['CPF/CNPJ'],))
-                cliente_id_result = cursor.fetchone()
-                cliente_id = cliente_id_result[0] if cliente_id_result else None
-                duplicados_clientes.append(row['CPF/CNPJ'])
+                if cursor.rowcount > 0:  
+                    cliente_id = cursor.fetchone()[0]  
+                else:  
+                    cursor.execute("SELECT id FROM tbl_clientes WHERE cpf_cnpj = %s;", (row['CPF/CNPJ'],))
+                    cliente_id_result = cursor.fetchone()
+                    cliente_id = cliente_id_result[0] if cliente_id_result else None
+                    duplicados_clientes.append(row['CPF/CNPJ'])
 
-            # Inserir dados do plano
-            cursor.execute(insert_query_planos, (
-                row['Plano'],
-                row['Plano Valor']
-            ))
+                cursor.execute(insert_query_planos, (
+                    row['Plano'],
+                    row['Plano Valor']
+                ))
 
-            cursor.execute("SELECT id FROM tbl_planos WHERE descricao = %s;", (row['Plano'],))
-            plano_id = cursor.fetchone()
-            print(plano_id)
+                cursor.execute("SELECT id FROM tbl_planos WHERE descricao = %s;", (row['Plano'],))
+                plano_id = cursor.fetchone()[0]
 
+                cursor.execute(insert_query_status, (
+                    row['Status'],
+                ))
 
-            cursor.execute(insert_query_status, (
-                row['Status'],
-            ))
+                cursor.execute("SELECT id FROM tbl_status_contrato WHERE status = %s;", (row['Status'],))
+                status_id = cursor.fetchone()[0]
 
-            cursor.execute("SELECT id FROM tbl_status_contrato WHERE status = %s;", (row['Status'],))
-            status_id = cursor.fetchone()
-            # print(status_id)
+                cursor.execute(insert_query_contratos, (
+                    cliente_id,
+                    plano_id,
+                    row['Vencimento'],
+                    row['Isento'],
+                    row['Endereço'],
+                    row['Número'],
+                    row['Bairro'],
+                    row['Cidade'],
+                    row['Complemento'],
+                    row['CEP'],
+                    row['UF'],
+                    status_id,
+                ))
 
-            
-            # Inserir dados na tabela de contratos
-            cursor.execute(insert_query_contratos, (
-                cliente_id,
-                plano_id,
-                row['Vencimento'],
-                row['Isento'],
-                row['Endereço'],
-                row['Número'],
-                row['Bairro'],
-                row['Cidade'],
-                row['Complemento'],
-                row['CEP'],
-                row['UF'],
-                status_id,
-            ))
+                if pd.notnull(row['Celulares']):
+                    tipo_contato_id = (1,)
+                    contato = row['Celulares']
+                elif pd.notnull(row['Telefones']):
+                    tipo_contato_id = (2,)
+                    contato = row['Telefones']
+                elif pd.notnull(row['Emails']):
+                    tipo_contato_id = (3,)
+                    contato = row['Emails']
+                else:
+                    raise ValueError("Nenhum contato disponível")
 
-            if pd.notnull(row['Celulares']):
-                tipo_contato_id = (1,)
-                contato = row['Celulares']
-                
-            elif pd.notnull(row['Telefones']):
-                tipo_contato_id = (2,)
-                contato = row['Telefones']
-                
-            elif pd.notnull(row['Emails']):
-                tipo_contato_id = (3,)
-                contato = row['Emails']
- 
-            cursor.execute(insert_query_cliente_contatos, (
-                cliente_id,
-                tipo_contato_id,
-                contato,
-            ))
+                cursor.execute(insert_query_cliente_contatos, (
+                    cliente_id,
+                    tipo_contato_id[0],
+                    contato,
+                ))
 
+                total_registros_importados += 1
 
+            except Exception as e:
+                registros_nao_importados.append({
+                    'linha': indice + 1,
+                    'motivo': str(e)
+                })
 
-
-
-        # Commit das transações
         conn.commit()
         cursor.close()
         conn.close()
 
         print("Dados inseridos com sucesso!")
+        print(f"Total de registros importados: {total_registros_importados}")
+        print("Registros não importados:")
+        for registro in registros_nao_importados:
+            print(f"Linha {registro['linha']}: {registro['motivo']}")
 
     except Exception as e:
         print(f"Erro ao conectar: {e}")
 
-
-# Carregar dados do Excel e chamar a função
-
 df = pd.read_excel('dados_importacao.xlsx')
 df_mapeado = mapear_df(df)
-# print(df_mapeado)
 
 inserir_dados(df_mapeado)
 
-print(duplicados_clientes)
+print("Clientes duplicados:", duplicados_clientes)
