@@ -13,6 +13,8 @@ host = os.getenv('DB_HOST')
 port = os.getenv('DB_PORT')
 
 
+duplicados_clientes = []
+
 def mapear_df(df):
     mapeamento_uf = {
         'Paraná': 'PR',
@@ -70,7 +72,7 @@ def inserir_dados(df):
         df['CPF/CNPJ'] = df['CPF/CNPJ'].astype(str)
         df['CPF/CNPJ'] = df['CPF/CNPJ'].str.replace(r'\D', '', regex=True)
 
-        duplicados_clientes = []
+        
 
         # Queries
         insert_query_clientes = """
@@ -93,6 +95,11 @@ def inserir_dados(df):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
         """
 
+        insert_query_cliente_contatos = """
+        INSERT INTO tbl_cliente_contatos (cliente_id, tipo_contato_Id, contato)
+        VALUES (%s, %s, %s);
+        """
+
         for indice, row in df.iterrows():
             # Inserir dados do cliente
             cursor.execute(insert_query_clientes, (
@@ -109,8 +116,6 @@ def inserir_dados(df):
                 cursor.execute("SELECT id FROM tbl_clientes WHERE cpf_cnpj = %s;", (row['CPF/CNPJ'],))
                 cliente_id_result = cursor.fetchone()
                 cliente_id = cliente_id_result[0] if cliente_id_result else None
-
-            if cliente_id is None:
                 duplicados_clientes.append(row['CPF/CNPJ'])
 
             # Inserir dados do plano
@@ -130,7 +135,7 @@ def inserir_dados(df):
 
             cursor.execute("SELECT id FROM tbl_status_contrato WHERE status = %s;", (row['Status'],))
             status_id = cursor.fetchone()
-            print(status_id)
+            # print(status_id)
 
             
             # Inserir dados na tabela de contratos
@@ -149,6 +154,28 @@ def inserir_dados(df):
                 status_id,
             ))
 
+            if pd.notnull(row['Celulares']):
+                tipo_contato_id = (1,)
+                contato = row['Celulares']
+                
+            elif pd.notnull(row['Telefones']):
+                tipo_contato_id = (2,)
+                contato = row['Telefones']
+                
+            elif pd.notnull(row['Emails']):
+                tipo_contato_id = (3,)
+                contato = row['Emails']
+ 
+            cursor.execute(insert_query_cliente_contatos, (
+                cliente_id,
+                tipo_contato_id,
+                contato,
+            ))
+
+
+
+
+
         # Commit das transações
         conn.commit()
         cursor.close()
@@ -164,6 +191,8 @@ def inserir_dados(df):
 
 df = pd.read_excel('dados_importacao.xlsx')
 df_mapeado = mapear_df(df)
-print(df_mapeado)
+# print(df_mapeado)
 
 inserir_dados(df_mapeado)
+
+print(duplicados_clientes)
