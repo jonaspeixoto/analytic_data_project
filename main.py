@@ -62,6 +62,7 @@ def inserir_dados(df):
             host=host,
             port=port
         )
+        print('dbname')
         cursor = conn.cursor()
         print('Conexão realizada com sucesso')
         print("inserindo dados")
@@ -88,13 +89,13 @@ def inserir_dados(df):
         """
 
         insert_query_contratos = """
-        INSERT INTO tbl_cliente_contratos (cliente_id, plano_id, dia_vencimento, isento, endereco_logradouro, endereco_numero, endereco_bairro, endereco_cidade, endereco_complemento, endereco_cep, endereco_uf, status_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        INSERT INTO tbl_cliente_contratos (cliente_id, plano_id, dia_vencimento, isento, endereco_logradouro, endereco_numero, endereco_bairro, endereco_cidade, endereco_complemento, endereco_cep, endereco_uf, status_id,desconto, mac, ip)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s);
         """
 
         insert_query_cliente_contatos = """
         INSERT INTO tbl_cliente_contatos (cliente_id, tipo_contato_Id, contato)
-        VALUES (%s, %s, %s);
+        VALUES ('%s', '%s', '%s');
         """
 
         total_registros_importados = 0
@@ -145,25 +146,31 @@ def inserir_dados(df):
                     row['CEP'],
                     row['UF'],
                     status_id,
+                    row['Desconto'],
+                    row['MAC'],
+                    row['IP'],
+                    
                 ))
 
-                if pd.notnull(row['Celulares']):
-                    tipo_contato_id = (1,)
-                    contato = row['Celulares']
-                elif pd.notnull(row['Telefones']):
-                    tipo_contato_id = (2,)
-                    contato = row['Telefones']
-                elif pd.notnull(row['Emails']):
-                    tipo_contato_id = (3,)
-                    contato = row['Emails']
-                else:
-                    raise ValueError("Nenhum contato disponível")
+                if row['Celulares']: 
+                    cursor.execute(insert_query_cliente_contatos %(
+                        cliente_id,
+                        1,
+                        row['Celulares'],
+                    ))
+                if row['Telefones']: 
+                   cursor.execute(insert_query_cliente_contatos %(
+                        cliente_id,
+                        2,
+                        row['Telefones'],
+                    ))
 
-                cursor.execute(insert_query_cliente_contatos, (
-                    cliente_id,
-                    tipo_contato_id[0],
-                    contato,
-                ))
+                if row['Emails']: 
+                  cursor.execute(insert_query_cliente_contatos %(
+                        cliente_id,
+                        3,
+                        row['Emails'],
+                    ))
 
                 total_registros_importados += 1
 
@@ -186,7 +193,7 @@ def inserir_dados(df):
     except Exception as e:
         print(f"Erro ao conectar: {e}")
 
-df = pd.read_excel('dados_importacao.xlsx')
+df = pd.read_excel('dados.xlsx')
 df_mapeado = mapear_df(df)
 
 inserir_dados(df_mapeado)
