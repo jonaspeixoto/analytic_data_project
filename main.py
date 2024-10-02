@@ -72,7 +72,7 @@ def inserir_dados(df):
         df['CPF/CNPJ'] = df['CPF/CNPJ'].str.replace(r'\D', '', regex=True)
 
 
-        # Querys
+        # Querys e
         insert_query_clientes = """
         INSERT INTO tbl_clientes (nome_razao_social, nome_fantasia, cpf_cnpj, data_nascimento, data_cadastro) 
         VALUES (%s, %s, %s, %s, %s) ON CONFLICT (cpf_cnpj) DO NOTHING RETURNING id;
